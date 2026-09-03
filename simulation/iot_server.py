@@ -1,25 +1,26 @@
 """
 Secure IoT Network for Smart Campus
-IoT Device Simulation
-
-This program simulates three smart-campus IoT devices:
-1. Temperature Sensor
-2. Smart Lighting
-3. Smart Door Lock
-
-The server provides a simple interface for authorized
-security testing in a controlled laboratory environment.
+Authentication-enabled IoT Simulation
 """
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
-
+import hashlib
+import secrets
+import os
 
 HOST = "127.0.0.1"
 PORT = 8080
 
+# Demo credentials for the authorized laboratory environment.
+USERNAME = os.getenv("IOT_USERNAME", "campus_admin")
+PASSWORD = os.getenv("IOT_PASSWORD", "SmartCampus@2026")
 
-# Simulated IoT devices
+# Store a password hash instead of the plaintext password.
+PASSWORD_HASH = hashlib.sha256(
+    PASSWORD.encode()
+).hexdigest()
+
 IOT_DEVICES = {
     "temperature": {
         "device_name": "Campus Temperature Sensor",
@@ -39,6 +40,17 @@ IOT_DEVICES = {
 }
 
 
+def verify_credentials(username, password):
+    password_hash = hashlib.sha256(
+        password.encode()
+    ).hexdigest()
+
+    return (
+        secrets.compare_digest(username, USERNAME)
+        and secrets.compare_digest(password_hash, PASSWORD_HASH)
+    )
+
+
 class IoTRequestHandler(BaseHTTPRequestHandler):
 
     def send_json(self, data, status_code=200):
@@ -51,16 +63,42 @@ class IoTRequestHandler(BaseHTTPRequestHandler):
 
         self.wfile.write(response)
 
+    def authenticate(self):
+        username = self.headers.get("X-IoT-Username")
+        password = self.headers.get("X-IoT-Password")
+
+        if not username or not password:
+            self.send_json({
+                "error": "Authentication required",
+                "message": "Valid IoT credentials are required."
+            }, 401)
+            return False
+
+        if not verify_credentials(username, password):
+            self.send_json({
+                "error": "Authentication failed",
+                "message": "Invalid credentials."
+            }, 403)
+            return False
+
+        return True
+
     def do_GET(self):
 
+        # Public health-check endpoint
         if self.path == "/":
             self.send_json({
                 "project": "Secure IoT Network for Smart Campus",
                 "server": "IoT Simulation Server",
-                "status": "running"
+                "authentication": "enabled"
             })
+            return
 
-        elif self.path == "/devices":
+        # All IoT data endpoints require authentication
+        if not self.authenticate():
+            return
+
+        if self.path == "/devices":
             self.send_json(IOT_DEVICES)
 
         elif self.path == "/temperature":
@@ -83,21 +121,25 @@ class IoTRequestHandler(BaseHTTPRequestHandler):
 
 def start_server():
 
-    server = HTTPServer((HOST, PORT), IoTRequestHandler)
+    server = HTTPServer(
+        (HOST, PORT),
+        IoTRequestHandler
+    )
 
-    print("=" * 50)
-    print(" SMART CAMPUS IoT SIMULATION")
-    print("=" * 50)
+    print("=" * 55)
+    print(" SECURE SMART CAMPUS IoT SIMULATION")
+    print("=" * 55)
     print(f"Server running on http://{HOST}:{PORT}")
+    print("Authentication: ENABLED")
     print()
-    print("Available IoT endpoints:")
+    print("Protected endpoints:")
     print("  /devices")
     print("  /temperature")
     print("  /lighting")
     print("  /door")
     print()
     print("Press CTRL+C to stop the server.")
-    print("=" * 50)
+    print("=" * 55)
 
     server.serve_forever()
 
